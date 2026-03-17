@@ -24,15 +24,25 @@ class PosEncoder(nn.Module):
     Sinusoidal positional encoding as a non-trainable buffer.
     x: [B, C, L]
     """
+
     def __init__(self, d_model: int, length: int):
         super().__init__()
         freqs = torch.tensor(
-            [10000 ** (-i / d_model) if i % 2 == 0 else -10000 ** ((1 - i) / d_model) for i in range(d_model)],
-            dtype=torch.float32
-        ).unsqueeze(0)  # [C, 1]
+            [
+                (
+                    10000 ** (-i / d_model)
+                    if i % 2 == 0
+                    else -(10000 ** ((1 - i) / d_model))
+                )
+                for i in range(d_model)
+            ],
+            dtype=torch.float32,
+        ).unsqueeze(
+            1
+        )  # [C, 1]
         phases = torch.tensor(
             [0.0 if i % 2 == 0 else math.pi / 2 for i in range(d_model)],
-            dtype=torch.float32
+            dtype=torch.float32,
         ).unsqueeze(1)
         pos = torch.arange(length, dtype=torch.float32).repeat(d_model, 1)
         pe = torch.sin(pos * freqs + phases)  # [C, L]
@@ -67,13 +77,27 @@ class MultiHeadAttention(nn.Module):
         k = self.k_linear(x).view(batch_size, length, self.num_heads, self.d_k)
         v = self.v_linear(x).view(batch_size, length, self.num_heads, self.d_k)
 
-        q = q.permute(2, 0, 1, 3).contiguous().view(batch_size * self.num_heads, length, self.d_k)
-        k = k.permute(2, 0, 1, 3).contiguous().view(batch_size * self.num_heads, length, self.d_k)
-        v = v.permute(2, 0, 1, 3).contiguous().view(batch_size * self.num_heads, length, self.d_k)
+        q = (
+            q.permute(2, 0, 1, 3)
+            .contiguous()
+            .view(batch_size * self.num_heads, length, self.d_k)
+        )
+        k = (
+            k.permute(2, 0, 1, 3)
+            .contiguous()
+            .view(batch_size * self.num_heads, length, self.d_k)
+        )
+        v = (
+            v.permute(2, 0, 1, 3)
+            .contiguous()
+            .view(batch_size * self.num_heads, length, self.d_k)
+        )
 
         if mask.dtype != torch.bool:
             mask = mask.bool()
-        attn_mask = mask.unsqueeze(1).expand(-1, length, -1).repeat(self.num_heads, 1, 1)  # [B*h, L, L]
+        attn_mask = (
+            mask.unsqueeze(1).expand(-1, length, -1).repeat(self.num_heads, 1, 1)
+        )  # [B*h, L, L]
 
         attn = torch.bmm(q, k.transpose(1, 2))
         attn = mask_logits(attn, attn_mask)
@@ -82,18 +106,39 @@ class MultiHeadAttention(nn.Module):
 
         out = torch.bmm(attn, v)  # [B*h, L, d_k]
         out = out.view(batch_size, self.num_heads, length, self.d_k)
-        out = out.permute(1, 2, 0, 3).contiguous().view(batch_size, length, self.d_model)
+        out = (
+            out.permute(1, 2, 0, 3).contiguous().view(batch_size, length, self.d_model)
+        )
         out = self.fc(out)
         out = self.drop(out)
         return out.transpose(1, 2)  # [B, C, L]
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, dropout: float, conv_num: int, k: int, length: int, init_name: str = "kaiming", act_name: str = "relu", norm_name: str = "layer_norm", norm_groups: int = 8):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        dropout: float,
+        conv_num: int,
+        k: int,
+        length: int,
+        init_name: str = "kaiming",
+        act_name: str = "relu",
+        norm_name: str = "layer_norm",
+        norm_groups: int = 8,
+    ):
         super().__init__()
-        self.convs = nn.ModuleList([DepthwiseSeparableConv(d_model, d_model, k, init_name=init_name) for _ in range(conv_num)])
+        self.convs = nn.ModuleList(
+            [
+                DepthwiseSeparableConv(d_model, d_model, k, init_name=init_name)
+                for _ in range(conv_num)
+            ]
+        )
         # Stochastic-depth dropout: p scales linearly with layer depth.
-        self.conv_drops = nn.ModuleList([Dropout(dropout * (i + 1) / conv_num) for i in range(conv_num)])
+        self.conv_drops = nn.ModuleList(
+            [Dropout(dropout * (i + 1) / conv_num) for i in range(conv_num)]
+        )
         self.drop = Dropout(dropout)
         self.self_att = MultiHeadAttention(d_model, num_heads, dropout)
         self.fc = nn.Linear(d_model, d_model, bias=True)
@@ -102,7 +147,12 @@ class EncoderBlock(nn.Module):
 
         # Normalization over [C, L]; fixed length required for layer_norm.
         self.normb = get_norm(norm_name, d_model, length, num_groups=norm_groups)
-        self.norms = nn.ModuleList([get_norm(norm_name, d_model, length, num_groups=norm_groups) for _ in range(conv_num)])
+        self.norms = nn.ModuleList(
+            [
+                get_norm(norm_name, d_model, length, num_groups=norm_groups)
+                for _ in range(conv_num)
+            ]
+        )
         self.norme = get_norm(norm_name, d_model, length, num_groups=norm_groups)
         self.L = conv_num
 
