@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-#for test
 def train_single_epoch(model, optimizer, scheduler, data_iter,
                        steps, grad_clip, loss_fn, device,
                        global_step: int = 0) -> float:
