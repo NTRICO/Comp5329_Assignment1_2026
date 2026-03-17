@@ -18,6 +18,7 @@ class QANet(nn.Module):
       - para_limit, ques_limit
       - pretrained_char (optional bool, default False)
     """
+
     def __init__(self, word_mat, char_mat, args):
         super().__init__()
         d_model = int(args.d_model)
@@ -29,38 +30,82 @@ class QANet(nn.Module):
         len_c = int(args.para_limit)
         len_q = int(args.ques_limit)
         pretrained_char = bool(getattr(args, "pretrained_char", False))
-        init_name   = str(getattr(args, "init_name",   "kaiming"))
-        act_name    = str(getattr(args, "activation",  "relu"))
-        norm_name   = str(getattr(args, "norm_name",   "layer_norm"))
+        init_name = str(getattr(args, "init_name", "kaiming"))
+        act_name = str(getattr(args, "activation", "relu"))
+        norm_name = str(getattr(args, "norm_name", "layer_norm"))
         norm_groups = int(getattr(args, "norm_groups", 8))
 
         self.char_emb = nn.Embedding.from_pretrained(
-            torch.tensor(char_mat, dtype=torch.float32),
-            freeze=pretrained_char
+            torch.tensor(char_mat, dtype=torch.float32), freeze=pretrained_char
         )
         self.word_emb = nn.Embedding.from_pretrained(
-            torch.tensor(word_mat, dtype=torch.float32),
-            freeze=False
+            torch.tensor(word_mat, dtype=torch.float32), freeze=False
         )
 
-        self.emb = Embedding(d_word, d_char, dropout, dropout_char, init_name=init_name, act_name=act_name)
-        self.context_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
-        self.question_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
+        self.emb = Embedding(
+            d_word,
+            d_char,
+            dropout,
+            dropout_char,
+            init_name=init_name,
+            act_name=act_name,
+        )
+        self.context_conv = DepthwiseSeparableConv(
+            d_word + d_char, d_model, 5, init_name=init_name
+        )
+        self.question_conv = DepthwiseSeparableConv(
+            d_word + d_char, d_model, 5, init_name=init_name
+        )
 
-        self.c_emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=len_c, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
-        self.q_emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=len_q, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
+        self.c_emb_enc = EncoderBlock(
+            d_model,
+            num_heads,
+            dropout,
+            conv_num=4,
+            k=7,
+            length=len_c,
+            init_name=init_name,
+            act_name=act_name,
+            norm_name=norm_name,
+            norm_groups=norm_groups,
+        )
+        self.q_emb_enc = EncoderBlock(
+            d_model,
+            num_heads,
+            dropout,
+            conv_num=4,
+            k=7,
+            length=len_q,
+            init_name=init_name,
+            act_name=act_name,
+            norm_name=norm_name,
+            norm_groups=norm_groups,
+        )
 
         self.cq_att = CQAttention(d_model, dropout)
-        self.cq_resizer = DepthwiseSeparableConv(d_model * 4, d_model, 5, init_name=init_name)
+        self.cq_resizer = DepthwiseSeparableConv(
+            d_model * 4, d_model, 5, init_name=init_name
+        )
 
-        base_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=2, k=5, length=len_c, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
+        base_enc = EncoderBlock(
+            d_model,
+            num_heads,
+            dropout,
+            conv_num=2,
+            k=5,
+            length=len_c,
+            init_name=init_name,
+            act_name=act_name,
+            norm_name=norm_name,
+            norm_groups=norm_groups,
+        )
         self.model_enc_blks = nn.ModuleList([copy.deepcopy(base_enc) for _ in range(7)])
 
         self.out = Pointer(d_model)
 
     def forward(self, Cwid, Ccid, Qwid, Qcid):
-        cmask = (Cwid == 0)  # True means PAD
-        qmask = (Qwid == 0)
+        cmask = Cwid == 0  # True means PAD
+        qmask = Qwid == 0
 
         Cw, Cc = self.word_emb(Cwid), self.char_emb(Ccid)
         Qw, Qc = self.word_emb(Qwid), self.char_emb(Qcid)

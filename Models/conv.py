@@ -52,11 +52,11 @@ class Conv1d(nn.Module):
 
         # 2. Sliding window: tensor.unfold(dim, size, step) → [B, C_in, L_out, k]
         L_out = x.size(2) - self.kernel_size + 1
-        x_unf = x.unfold(1, self.kernel_size, 1)  # [B, C_in, L_out, k]
+        x_unf = x.unfold(2, self.kernel_size, 1)  # [B, C_in, L_out, k]
 
         # 3. Grouped multiply-accumulate
-        G       = self.groups
-        C_in_g  = C_in // G
+        G = self.groups
+        C_in_g = C_in // G
         C_out_g = self.out_channels // G
 
         # Reshape into groups: [B, G, C_in_g, L_out, k]
@@ -65,7 +65,7 @@ class Conv1d(nn.Module):
         w = self.weight.view(G, C_out_g, C_in_g, self.kernel_size)
 
         # out[b,g,o,l] = Σ_{i,k} x_unf[b,g,i,l,k] * w[g,o,i,k]
-        out = torch.einsum('bgilk,goik->bgol', x_unf, w)  # [B, G, C_out_g, L_out]
+        out = torch.einsum("bgilk,goik->bgol", x_unf, w)  # [B, G, C_out_g, L_out]
         out = out.reshape(B, self.out_channels, L_out)
 
         if self.bias is not None:
@@ -120,19 +120,19 @@ class Conv2d(nn.Module):
         if self.padding > 0:
             p = self.padding
             pad_h = x.new_zeros(B, C_in, p, W)
-            x = torch.cat([pad_h, x, pad_h], dim=2)       # [B, C_in, H+2p, W]
-            pad_w = x.new_zeros(B, C_in, H, p)
-            x = torch.cat([pad_w, x, pad_w], dim=3)       # [B, C_in, H+2p, W+2p]
+            x = torch.cat([pad_h, x, pad_h], dim=2)  # [B, C_in, H+2p, W]
+            pad_w = x.new_zeros(B, C_in, H + 2 * p, p)
+            x = torch.cat([pad_w, x, pad_w], dim=3)  # [B, C_in, H+2p, W+2p]
 
         # 2. Sliding window along height then width
         H_out = x.size(2) - k + 1
         W_out = x.size(3) - k + 1
         # unfold dim=2 (height), then dim=3 (width)
-        x_unf = x.unfold(2, k, 1).unfold(3, k, 1)        # [B, C_in, H_out, W_out, k, k]
+        x_unf = x.unfold(2, k, 1).unfold(3, k, 1)  # [B, C_in, H_out, W_out, k, k]
 
         # 3. Grouped multiply-accumulate
-        G       = self.groups
-        C_in_g  = C_in // G
+        G = self.groups
+        C_in_g = C_in // G
         C_out_g = self.out_channels // G
 
         # Reshape into groups: [B, G, C_in_g, H_out, W_out, k, k]
@@ -141,7 +141,9 @@ class Conv2d(nn.Module):
         w = self.weight.view(G, C_out_g, C_in_g, k, k)
 
         # out[b,g,o,h,w] = Σ_{i,p,q} x_unf[b,g,i,h,w,p,q] * w[g,o,i,p,q]
-        out = torch.einsum('bgihwpq,goipq->bgohw', x_unf, w)  # [B, G, C_out_g, H_out, W_out]
+        out = torch.einsum(
+            "bgihwpq,goipq->bgohw", x_unf, w
+        )  # [B, G, C_out_g, H_out, W_out]
         out = out.reshape(B, self.out_channels, H_out, W_out)
 
         if self.bias is not None:
@@ -151,13 +153,25 @@ class Conv2d(nn.Module):
 
 
 class DepthwiseSeparableConv(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int, k: int, dim: int = 1, bias: bool = True, init_name: str = "kaiming"):
+    def __init__(
+        self,
+        in_ch: int,
+        out_ch: int,
+        k: int,
+        dim: int = 1,
+        bias: bool = True,
+        init_name: str = "kaiming",
+    ):
         super().__init__()
         if dim == 1:
-            self.depthwise_conv = Conv1d(in_ch, in_ch, k, groups=in_ch, padding=k // 2, bias=bias)
+            self.depthwise_conv = Conv1d(
+                in_ch, in_ch, k, groups=in_ch, padding=k // 2, bias=bias
+            )
             self.pointwise_conv = Conv1d(in_ch, out_ch, 1, padding=0, bias=bias)
         elif dim == 2:
-            self.depthwise_conv = Conv2d(in_ch, in_ch, k, groups=in_ch, padding=k // 2, bias=bias)
+            self.depthwise_conv = Conv2d(
+                in_ch, in_ch, k, groups=in_ch, padding=k // 2, bias=bias
+            )
             self.pointwise_conv = Conv2d(in_ch, out_ch, 1, padding=0, bias=bias)
         else:
             raise ValueError("dim must be 1 or 2")
@@ -172,4 +186,4 @@ class DepthwiseSeparableConv(nn.Module):
             constant_(self.pointwise_conv.bias, 0.0)
 
     def forward(self, x):
-        return self.depthwise_conv(self.pointwise_conv(x))
+        return self.pointwise_conv(self.depthwise_conv(x))

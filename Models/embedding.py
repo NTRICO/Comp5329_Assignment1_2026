@@ -16,7 +16,7 @@ class Highway(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [B, C, L] -> [B, L, C]
-        x = x.transpose(0, 2)
+        x = x.transpose(1, 2)
         for i in range(self.n):
             gate = torch.sigmoid(self.gate[i](x))
             nonlinear = self.act(self.linear[i](x))
@@ -25,18 +25,28 @@ class Highway(nn.Module):
 
 
 class Embedding(nn.Module):
-    def __init__(self, d_word: int, d_char: int, dropout: float, dropout_char: float, init_name: str = "kaiming", act_name: str = "relu"):
+    def __init__(
+        self,
+        d_word: int,
+        d_char: int,
+        dropout: float,
+        dropout_char: float,
+        init_name: str = "kaiming",
+        act_name: str = "relu",
+    ):
         super().__init__()
         self.drop = Dropout(dropout)
         self.drop_char = Dropout(dropout_char)
-        self.conv2d = DepthwiseSeparableConv(d_char, d_char, 5, dim=2, init_name=init_name)
+        self.conv2d = DepthwiseSeparableConv(
+            d_char, d_char, 5, dim=2, init_name=init_name
+        )
         self.high = Highway(2, d_word + d_char, act_name=act_name)
         self.act = get_activation(act_name)
 
     def forward(self, ch_emb: torch.Tensor, wd_emb: torch.Tensor) -> torch.Tensor:
         # ch_emb: [B, L, char_len, d_char]
         # wd_emb: [B, L, d_word]
-        ch_emb = ch_emb.permute(0, 2, 1, 3)  # [B, d_char, L, char_len]
+        ch_emb = ch_emb.permute(0, 3, 1, 2)  # [B, d_char, L, char_len]
         ch_emb = self.drop_char(ch_emb)
         ch_emb = self.conv2d(ch_emb)
         ch_emb = self.act(ch_emb)
