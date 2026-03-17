@@ -12,7 +12,13 @@ import os
 import ujson as json
 import torch
 
-from Data import SQuADDataset, load_train_dev_eval, load_word_char_mats, make_loader, sanity_check_cache
+from Data import (
+    SQuADDataset,
+    load_train_dev_eval,
+    load_word_char_mats,
+    make_loader,
+    sanity_check_cache,
+)
 from Models import QANet
 from Models.Normalizations import normalizations
 from Losses import losses
@@ -28,61 +34,55 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def train(
     # ── Data paths ────────────────────────────────────────────────────────────
-    train_npz:          str   = "_data/train.npz",
-    dev_npz:            str   = "_data/dev.npz",
-    word_emb_json:      str   = "_data/word_emb.json",
-    char_emb_json:      str   = "_data/char_emb.json",
-    train_eval_json:    str   = "_data/train_eval.json",
-    dev_eval_json:      str   = "_data/dev_eval.json",
-    save_dir:           str   = "_model",
-    log_dir:            str   = "_log",
-    ckpt_name:          str   = "model.pt",
-
+    train_npz: str = "_data/train.npz",
+    dev_npz: str = "_data/dev.npz",
+    word_emb_json: str = "_data/word_emb.json",
+    char_emb_json: str = "_data/char_emb.json",
+    train_eval_json: str = "_data/train_eval.json",
+    dev_eval_json: str = "_data/dev_eval.json",
+    save_dir: str = "_model",
+    log_dir: str = "_log",
+    ckpt_name: str = "model.pt",
     # ── Training loop ─────────────────────────────────────────────────────────
-    batch_size:         int   = 8,
-    num_steps:          int   = 60000,
-    checkpoint:         int   = 200,
-    val_num_batches:    int   = 150,
-    test_num_batches:   int   = 150,
-    seed:               int   = 42,
-    grad_clip:          float = 5.0,
-    early_stop:         int   = 10,
-
+    batch_size: int = 8,
+    num_steps: int = 60000,
+    checkpoint: int = 200,
+    val_num_batches: int = 150,
+    test_num_batches: int = 150,
+    seed: int = 42,
+    grad_clip: float = 5.0,
+    early_stop: int = 10,
     # ── DL technique selection (string registry keys) ─────────────────────────
-    optimizer_name:     str   = "adam",
-    scheduler_name:     str   = "lambda",
-    loss_name:          str   = "qa_nll",
-    norm_name:          str   = "layer_norm",   # "layer_norm" | "group_norm"
-    norm_groups:        int   = 8,              # num_groups for group_norm
-
+    optimizer_name: str = "adam",
+    scheduler_name: str = "lambda",
+    loss_name: str = "qa_nll",
+    norm_name: str = "layer_norm",  # "layer_norm" | "group_norm"
+    norm_groups: int = 8,  # num_groups for group_norm
     # ── Optimizer hyperparameters ─────────────────────────────────────────────
-    learning_rate:      float = 1e-3,
-    beta1:              float = 0.8,
-    beta2:              float = 0.999,
-    eps:                float = 1e-7,
-    weight_decay:       float = 3e-7,
-    momentum:           float = 0.9,    # SGD / SGDMomentum
-
+    learning_rate: float = 1e-3,
+    beta1: float = 0.8,
+    beta2: float = 0.999,
+    eps: float = 1e-7,
+    weight_decay: float = 3e-7,
+    momentum: float = 0.9,  # SGD / SGDMomentum
     # ── Scheduler hyperparameters ─────────────────────────────────────────────
-    lr_step_size:       int   = 10000,  # step: decay every n steps
-    lr_gamma:           float = 0.5,    # step: multiplicative decay factor
-
+    lr_step_size: int = 10000,  # step: decay every n steps
+    lr_gamma: float = 0.5,  # step: multiplicative decay factor
     # ── Model architecture ────────────────────────────────────────────────────
-    para_limit:         int   = 400,
-    ques_limit:         int   = 50,
-    char_limit:         int   = 16,
-    d_model:            int   = 96,
-    num_heads:          int   = 8,
-    glove_dim:          int   = 300,
-    char_dim:           int   = 64,
-    dropout:            float = 0.1,
-    dropout_char:       float = 0.05,
-    pretrained_char:    bool  = False,
-
+    para_limit: int = 400,
+    ques_limit: int = 50,
+    char_limit: int = 16,
+    d_model: int = 96,
+    num_heads: int = 8,
+    glove_dim: int = 300,
+    char_dim: int = 64,
+    dropout: float = 0.1,
+    dropout_char: float = 0.05,
+    pretrained_char: bool = False,
     # ── Stubs for bug-injection phase ─────────────────────────────────────────
-    use_batch_norm:     bool  = False,
-    activation:         str   = "relu",
-    init_name:          str   = "kaiming",  # "kaiming" | "kaiming_uniform" | "xavier" | "xavier_normal"
+    use_batch_norm: bool = False,
+    activation: str = "relu",
+    init_name: str = "kaiming",  # "kaiming" | "kaiming_uniform" | "xavier" | "xavier_normal"
 ) -> dict:
     """
     Train QANet on SQuAD v1.1.
@@ -100,26 +100,28 @@ def train(
     """
     set_seed(seed)
 
-    os.makedirs(log_dir,  exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
     os.makedirs(save_dir, exist_ok=True)
 
     # Internal namespace required by QANet.__init__ and data utilities
-    args = argparse.Namespace({k: v for k, v in locals().items()})
+    args = argparse.Namespace(**{k: v for k, v in locals().items()})
 
     with open(os.path.join(save_dir, "run_config.json"), "w") as f:
         json.dump(vars(args), f, indent=2)
 
     sanity_check_cache(args)
-    word_mat, char_mat   = load_word_char_mats(args)
-    model                = QANet(word_mat, char_mat, args).to(DEVICE)
+    word_mat, char_mat = load_word_char_mats(args)
+    model = QANet(word_mat, char_mat, args).to(DEVICE)
     train_eval, dev_eval = load_train_dev_eval(args)
 
     train_dataset = SQuADDataset(train_npz)
-    dev_dataset   = SQuADDataset(dev_npz)
+    dev_dataset = SQuADDataset(dev_npz)
 
     train_loader = make_loader(
-        train_dataset, batch_size,
-        shuffle=True, pin_memory=(DEVICE.type == "cuda"),
+        train_dataset,
+        batch_size,
+        shuffle=True,
+        pin_memory=(DEVICE.type == "cuda"),
     )
 
     def _infinite(loader):
@@ -130,62 +132,94 @@ def train(
 
     # Validate and select DL components from registries
     if optimizer_name not in optimizers:
-        raise ValueError(f"Unknown optimizer '{optimizer_name}'. Available: {list(optimizers.keys())}")
+        raise ValueError(
+            f"Unknown optimizer '{optimizer_name}'. Available: {list(optimizers.keys())}"
+        )
     if scheduler_name not in schedulers:
-        raise ValueError(f"Unknown scheduler '{scheduler_name}'. Available: {list(schedulers.keys())}")
+        raise ValueError(
+            f"Unknown scheduler '{scheduler_name}'. Available: {list(schedulers.keys())}"
+        )
     if loss_name not in losses:
-        raise ValueError(f"Unknown loss '{loss_name}'. Available: {list(losses.keys())}")
+        raise ValueError(
+            f"Unknown loss '{loss_name}'. Available: {list(losses.keys())}"
+        )
     if norm_name not in normalizations:
-        raise ValueError(f"Unknown norm '{norm_name}'. Available: {list(normalizations.keys())}")
+        raise ValueError(
+            f"Unknown norm '{norm_name}'. Available: {list(normalizations.keys())}"
+        )
 
-    params    = (p for p in model.parameters() if p.requires_grad)
+    params = (p for p in model.parameters() if p.requires_grad)
     optimizer = optimizers[optimizer_name](params, args)
     scheduler = schedulers[scheduler_name](optimizer, args)
-    loss_fn   = losses[loss_name]
+    loss_fn = losses[loss_name]
 
-    best_f1  = 0.0
-    best_em  = 0.0
+    best_f1 = 0.0
+    best_em = 0.0
     patience = 0
-    history  = []
+    history = []
 
     for step0 in range(0, num_steps, checkpoint):
         steps_this_block = min(checkpoint, num_steps - step0)
 
         train_loss = train_single_epoch(
-            model, optimizer, scheduler, _train_iter,
-            steps_this_block, grad_clip, loss_fn, DEVICE,
+            model,
+            optimizer,
+            scheduler,
+            _train_iter,
+            steps_this_block,
+            grad_clip,
+            loss_fn,
+            DEVICE,
             global_step=step0,
         )
 
         tr_metrics, _ = run_eval(
-            model, train_dataset, train_eval,
-            num_batches=val_num_batches, batch_size=batch_size,
+            model,
+            train_dataset,
+            train_eval,
+            num_batches=val_num_batches,
+            batch_size=batch_size,
             use_random_batches=True,
-            device=DEVICE, loss_fn=loss_fn,
+            device=DEVICE,
+            loss_fn=loss_fn,
         )
-        print("VALID(train) loss {loss:8f}  F1 {f1:8f}  EM {exact_match:8f}\n".format(**tr_metrics))
+        print(
+            "VALID(train) loss {loss:8f}  F1 {f1:8f}  EM {exact_match:8f}\n".format(
+                **tr_metrics
+            )
+        )
 
         dv_metrics, ans = run_eval(
-            model, dev_dataset, dev_eval,
-            num_batches=test_num_batches, batch_size=batch_size,
+            model,
+            dev_dataset,
+            dev_eval,
+            num_batches=test_num_batches,
+            batch_size=batch_size,
             use_random_batches=False,
-            device=DEVICE, loss_fn=loss_fn,
+            device=DEVICE,
+            loss_fn=loss_fn,
         )
-        print("TEST        loss {loss:8f}  F1 {f1:8f}  EM {exact_match:8f}\n".format(**dv_metrics))
+        print(
+            "TEST        loss {loss:8f}  F1 {f1:8f}  EM {exact_match:8f}\n".format(
+                **dv_metrics
+            )
+        )
 
         current_lr = scheduler.get_last_lr()
         print("Learning rate:", current_lr)
 
-        history.append({
-            "step":       step0 + steps_this_block,
-            "train_loss": train_loss,
-            "train_f1":   tr_metrics["f1"],
-            "train_em":   tr_metrics["exact_match"],
-            "dev_loss":   dv_metrics["loss"],
-            "dev_f1":     dv_metrics["f1"],
-            "dev_em":     dv_metrics["exact_match"],
-            "lr":         current_lr[0] if current_lr else None,
-        })
+        history.append(
+            {
+                "step": step0 + steps_this_block,
+                "train_loss": train_loss,
+                "train_f1": tr_metrics["f1"],
+                "train_em": tr_metrics["exact_match"],
+                "dev_loss": dv_metrics["loss"],
+                "dev_f1": dv_metrics["f1"],
+                "dev_em": dv_metrics["exact_match"],
+                "lr": current_lr[0] if current_lr else None,
+            }
+        )
 
         dev_f1 = dv_metrics["f1"]
         dev_em = dv_metrics["exact_match"]
@@ -197,12 +231,19 @@ def train(
                 break
         else:
             patience = 0
-            best_f1  = max(best_f1, dev_f1)
-            best_em  = max(best_em, dev_em)
+            best_f1 = max(best_f1, dev_f1)
+            best_em = max(best_em, dev_em)
 
         save_checkpoint(
-            save_dir, ckpt_name, model, optimizer, scheduler,
-            step0 + steps_this_block, best_f1, best_em, vars(args),
+            save_dir,
+            ckpt_name,
+            model,
+            optimizer,
+            scheduler,
+            step0 + steps_this_block,
+            best_f1,
+            best_em,
+            vars(args),
         )
 
         with open(os.path.join(log_dir, "answers.json"), "w") as f:
@@ -211,9 +252,9 @@ def train(
     print(f"Training finished.  Best F1: {best_f1:.4f}  Best EM: {best_em:.4f}")
 
     return {
-        "best_f1":   best_f1,
-        "best_em":   best_em,
-        "history":   history,
+        "best_f1": best_f1,
+        "best_em": best_em,
+        "history": history,
         "ckpt_path": os.path.abspath(os.path.join(save_dir, ckpt_name)),
-        "config":    vars(args),
+        "config": vars(args),
     }
