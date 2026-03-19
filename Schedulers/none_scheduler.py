@@ -1,18 +1,8 @@
-class NoneScheduler:
-    """A no-op scheduler that keeps learning rate unchanged."""
+from torch.optim.lr_scheduler import LRScheduler
 
-    def __init__(self, optimizer):
-        self.optimizer = optimizer
+class NoneScheduler(LRScheduler):
+    def __init__(self, optimizer, last_epoch=-1):
+        super().__init__(optimizer, last_epoch)
 
-    def step(self):
-        pass
-
-    def get_last_lr(self):
-        return [group["lr"] for group in self.optimizer.param_groups]
-
-    def state_dict(self):
-
-        return {}
-
-    def load_state_dict(self, state_dict):
-        pass
+    def get_lr(self):
+        return list(self.base_lrs)
