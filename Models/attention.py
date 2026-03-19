@@ -18,7 +18,9 @@ class CQAttention(nn.Module):
         uniform_(w, -math.sqrt(lim), math.sqrt(lim))
         self.w = nn.Parameter(w)
 
-    def forward(self, C: torch.Tensor, Q: torch.Tensor, cmask: torch.Tensor, qmask: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, C: torch.Tensor, Q: torch.Tensor, cmask: torch.Tensor, qmask: torch.Tensor
+    ) -> torch.Tensor:
         # C: [B, C, Lc], Q: [B, C, Lq]
         C = C.transpose(1, 2)  # [B, Lc, C]
         Q = Q.transpose(1, 2)  # [B, Lq, C]
@@ -35,7 +37,7 @@ class CQAttention(nn.Module):
 
         S1 = F.softmax(mask_logits(S, qmask), dim=2)
         S2 = F.softmax(mask_logits(S, cmask), dim=1)
-        A = torch.bmm(Q, S1)
+        A = torch.bmm(S1, Q)  # [B, Lc, C]
         B = torch.bmm(torch.bmm(S1, S2.transpose(1, 2)), C)
 
         out = torch.cat([C, A, C * A, C * B], dim=2)  # [B, Lc, 4C]
