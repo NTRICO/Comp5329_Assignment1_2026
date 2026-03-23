@@ -55,7 +55,7 @@ def save_checkpoint(
     """Save model, optimizer, scheduler state to a checkpoint file."""
     os.makedirs(save_dir, exist_ok=True)
     payload = {
-        "model_state": model.state_dict(),
+        "model": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
         "scheduler_state": scheduler.state_dict(),
         "step": step,
