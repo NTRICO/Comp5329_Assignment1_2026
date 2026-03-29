@@ -13,5 +13,6 @@ class Dropout(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not self.training or self.p == 0.0:
             return x
-        mask = torch.bernoulli(torch.full_like(x, 1.0 - self.p))
-        return x * mask / self.p
+        keep_prob = 1.0 - self.p
+        mask = torch.bernoulli(torch.full_like(x, keep_prob))
+        return x * mask / keep_prob
