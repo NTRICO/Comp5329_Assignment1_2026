@@ -99,7 +99,7 @@ class MultiHeadAttention(nn.Module):
             mask.unsqueeze(1).expand(-1, length, -1).repeat(self.num_heads, 1, 1)
         )  # [B*h, L, L]
 
-        attn = torch.bmm(q, k.transpose(1, 2))
+        attn = torch.bmm(q, k.transpose(1, 2)) * self.scale
         attn = mask_logits(attn, attn_mask)
         attn = F.softmax(attn, dim=2)
         attn = self.drop(attn)
@@ -171,7 +171,7 @@ class EncoderBlock(nn.Module):
             out = self.norms[i](out)
 
         out = self.self_att(out, mask)
-        out = res
+        out = res + out
         out = self.drop(out)
 
         res = out
