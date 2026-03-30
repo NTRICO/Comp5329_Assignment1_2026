@@ -212,8 +212,8 @@ def build_features(examples, data_type: str, out_file: str,
         context_char_idxs.append(ctx_char_idx)
         ques_idxs.append(q_idx)
         ques_char_idxs.append(q_char_idx)
-        y1s.append(example["y1s"][-1])
-        y2s.append(example["y2s"][-1])
+        y1s.append(example["y1s"][0])
+        y2s.append(example["y2s"][0])
         ids.append(example["id"])
 
     ensure_parent(out_file)
@@ -355,7 +355,7 @@ def preprocess(
     # Step 2 — Build embedding matrices
     word_emb_source = fasttext_file if fasttext else glove_word_file
     char_emb_source = glove_char_file if pretrained_char else None
-    char_emb_dim = glove_dim if pretrained_char else char_dim
+    char_emb_dim = char_dim
 
     word_emb_mat, word2idx = get_embedding(
         word_counter, "word",
