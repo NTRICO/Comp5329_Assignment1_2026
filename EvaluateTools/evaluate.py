@@ -90,23 +90,29 @@ def evaluate(
     if loss_name not in losses:
         raise ValueError(f"Unknown loss '{loss_name}'. Available: {list(losses.keys())}")
 
+    ckpt_path = os.path.join(save_dir, ckpt_name)
+    ckpt = torch.load(ckpt_path, map_location=DEVICE)
+
     # Build a lightweight namespace so existing helpers can consume it
-    args = argparse.Namespace(
-        dev_npz=dev_npz,
-        word_emb_json=word_emb_json,
-        char_emb_json=char_emb_json,
-        dev_eval_json=dev_eval_json,
-        para_limit=para_limit,
-        ques_limit=ques_limit,
-        char_limit=char_limit,
-        d_model=d_model,
-        num_heads=num_heads,
-        glove_dim=glove_dim,
-        char_dim=char_dim,
-        dropout=dropout,
-        dropout_char=dropout_char,
-        pretrained_char=pretrained_char,
-    )
+    cfg = dict(ckpt.get("config", {}))
+    cfg.update({
+        "dev_npz": dev_npz,
+        "word_emb_json": word_emb_json,
+        "char_emb_json": char_emb_json,
+        "dev_eval_json": dev_eval_json,
+        "para_limit": cfg.get("para_limit", para_limit),
+        "ques_limit": cfg.get("ques_limit", ques_limit),
+        "char_limit": cfg.get("char_limit", char_limit),
+        "d_model": cfg.get("d_model", d_model),
+        "num_heads": cfg.get("num_heads", num_heads),
+        "glove_dim": cfg.get("glove_dim", glove_dim),
+        "char_dim": cfg.get("char_dim", char_dim),
+        "dropout": cfg.get("dropout", dropout),
+        "dropout_char": cfg.get("dropout_char", dropout_char),
+        "pretrained_char": cfg.get("pretrained_char", pretrained_char),
+    })
+
+    args = argparse.Namespace(**cfg)
 
     word_mat, char_mat = load_word_char_mats(args)
     model = QANet(word_mat, char_mat, args).to(DEVICE)
@@ -114,8 +120,6 @@ def evaluate(
     dev_eval = load_dev_eval(args)
     dev_dataset = SQuADDataset(dev_npz)
 
-    ckpt_path = os.path.join(save_dir, ckpt_name)
-    ckpt = torch.load(ckpt_path, map_location=DEVICE)
     model.load_state_dict(ckpt["model"])
 
     metrics, ans = run_eval(
