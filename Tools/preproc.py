@@ -71,7 +71,7 @@ def process_file(filename: str, data_type: str, word_counter: Counter, char_coun
     examples = []
     eval_examples = {}
     total = 0
-    with open(filename, "r") as fh:
+    with open(filename, "r",encoding="utf-8") as fh:
         source = json.load(fh)
         for article in tqdm(source["data"]):
             for para in article["paragraphs"]:
