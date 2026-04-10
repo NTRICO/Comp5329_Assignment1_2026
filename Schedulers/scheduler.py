@@ -1,7 +1,6 @@
 from Schedulers.cosine_scheduler import CosineAnnealingLR
 from Schedulers.lambda_scheduler import LambdaLR
 from Schedulers.step_scheduler import StepLR
-from Schedulers.none_scheduler import NoneScheduler
 
 
 # ── Scheduler factories ──────────────────────────────────────────────────────
@@ -29,16 +28,10 @@ def lambda_scheduler(optimizer, args):
     return LambdaLR(optimizer, lr_lambda=lambda _: 1.0)
 
 
-def none_scheduler(optimizer, args):
-    """No scheduler: learning rate stays fixed."""
-    return NoneScheduler(optimizer)
-
-
 # ── Registry ─────────────────────────────────────────────────────────────────
 
 schedulers = {
     "cosine": cosine_scheduler,
     "step": step_scheduler,
     "lambda": lambda_scheduler,
-    "none": none_scheduler,
 }

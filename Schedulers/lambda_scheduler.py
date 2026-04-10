@@ -21,3 +21,13 @@ class LambdaLR(LRScheduler):
         t = self.last_epoch
         factor = self.lr_lambda(t)
         return [base_lr * factor for base_lr in self.base_lrs]
+
+    def state_dict(self):
+        state = super().state_dict()
+        state.pop("lr_lambda", None)
+        return state
+
+    def load_state_dict(self, state_dict):
+        state_dict = dict(state_dict)
+        state_dict.pop("lr_lambda", None)
+        super().load_state_dict(state_dict)
