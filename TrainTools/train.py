@@ -32,6 +32,19 @@ from TrainTools.train_utils import train_single_epoch, save_checkpoint
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _is_better_checkpoint(
+    dev_f1: float,
+    dev_em: float,
+    best_ckpt_f1: float,
+    best_ckpt_em: float,
+) -> bool:
+    """Select the saved checkpoint by dev F1, breaking ties with dev EM."""
+    return (
+        dev_f1 > best_ckpt_f1
+        or (dev_f1 == best_ckpt_f1 and dev_em > best_ckpt_em)
+    )
+
+
 def train(
     # ── Data paths ────────────────────────────────────────────────────────────
     train_npz: str = "_data/train.npz",
@@ -48,7 +61,8 @@ def train(
     num_steps: int = 60000,
     checkpoint: int = 200,
     val_num_batches: int = 150,
-    test_num_batches: int = 150,
+    test_num_batches=None,  # legacy alias; use dev_num_batches
+    dev_num_batches: int = 150,
     seed: int = 42,
     grad_clip: float = 5.0,
     early_stop: int = 10,
@@ -155,8 +169,13 @@ def train(
 
     best_f1 = 0.0
     best_em = 0.0
+    best_ckpt_f1 = float("-inf")
+    best_ckpt_em = float("-inf")
     patience = 0
     history = []
+    effective_dev_num_batches = (
+        test_num_batches if test_num_batches is not None else dev_num_batches
+    )
 
     for step0 in range(0, num_steps, checkpoint):
         steps_this_block = min(checkpoint, num_steps - step0)
@@ -193,14 +212,14 @@ def train(
             model,
             dev_dataset,
             dev_eval,
-            num_batches=test_num_batches,
+            num_batches=effective_dev_num_batches,
             batch_size=batch_size,
             use_random_batches=False,
             device=DEVICE,
             loss_fn=loss_fn,
         )
         print(
-            "TEST        loss {loss:8f}  F1 {f1:8f}  EM {exact_match:8f}\n".format(
+            "DEV         loss {loss:8f}  F1 {f1:8f}  EM {exact_match:8f}\n".format(
                 **dv_metrics
             )
         )
@@ -223,33 +242,51 @@ def train(
 
         dev_f1 = dv_metrics["f1"]
         dev_em = dv_metrics["exact_match"]
+        is_best_ckpt = _is_better_checkpoint(
+            dev_f1, dev_em, best_ckpt_f1, best_ckpt_em
+        )
 
-        if dev_f1 < best_f1 and dev_em < best_em:
+        if is_best_ckpt:
+            patience = 0
+        else:
             patience += 1
             if patience > early_stop:
                 print("Early stopping triggered.")
                 break
-        else:
-            patience = 0
-            best_f1 = max(best_f1, dev_f1)
-            best_em = max(best_em, dev_em)
 
-        save_checkpoint(
-            save_dir,
-            ckpt_name,
-            model,
-            optimizer,
-            scheduler,
-            step0 + steps_this_block,
-            best_f1,
-            best_em,
-            vars(args),
-        )
+        best_f1 = max(best_f1, dev_f1)
+        best_em = max(best_em, dev_em)
+
+        if is_best_ckpt:
+            best_ckpt_f1 = dev_f1
+            best_ckpt_em = dev_em
+            save_checkpoint(
+                save_dir,
+                ckpt_name,
+                model,
+                optimizer,
+                scheduler,
+                step0 + steps_this_block,
+                best_f1,
+                best_em,
+                vars(args),
+                dev_f1=dev_f1,
+                dev_em=dev_em,
+            )
+            print(
+                f"Saved best checkpoint to {os.path.join(save_dir, ckpt_name)} "
+                f"(dev F1={dev_f1:.4f}, dev EM={dev_em:.4f})"
+            )
 
         with open(os.path.join(log_dir, "answers.json"), "w") as f:
             json.dump(ans, f)
 
     print(f"Training finished.  Best F1: {best_f1:.4f}  Best EM: {best_em:.4f}")
+    if best_ckpt_f1 > float("-inf"):
+        print(
+            f"Best checkpoint metrics.  Dev F1: {best_ckpt_f1:.4f}  "
+            f"Dev EM: {best_ckpt_em:.4f}"
+        )
 
     return {
         "best_f1": best_f1,

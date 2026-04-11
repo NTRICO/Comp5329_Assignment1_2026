@@ -38,7 +38,8 @@ def evaluate(
 
     # ── Eval settings ─────────────────────────────────────────────────────────
     batch_size:         int   = 8,
-    test_num_batches:   int   = -1,       # -1 = full dev set
+    test_num_batches=None,  # legacy alias; use dev_num_batches
+    dev_num_batches:    int   = -1,       # -1 = full dev set
     loss_name:          str   = "qa_nll",
 
     # ── Model architecture (must match the checkpoint) ────────────────────────
@@ -72,6 +73,8 @@ def evaluate(
     batch_size:
         Number of examples per batch.
     test_num_batches:
+        Legacy alias for ``dev_num_batches``.
+    dev_num_batches:
         Number of batches to evaluate (-1 = entire dev set).
     loss_name:
         Loss function key from the registry (default ``"qa_nll"``).
@@ -89,6 +92,10 @@ def evaluate(
 
     if loss_name not in losses:
         raise ValueError(f"Unknown loss '{loss_name}'. Available: {list(losses.keys())}")
+
+    effective_dev_num_batches = (
+        test_num_batches if test_num_batches is not None else dev_num_batches
+    )
 
     ckpt_path = os.path.join(save_dir, ckpt_name)
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
@@ -124,7 +131,7 @@ def evaluate(
 
     metrics, ans = run_eval(
         model, dev_dataset, dev_eval,
-        num_batches=test_num_batches,
+        num_batches=effective_dev_num_batches,
         batch_size=batch_size,
         use_random_batches=False,
         device=DEVICE,
@@ -134,5 +141,5 @@ def evaluate(
     with open(os.path.join(log_dir, "answers.json"), "w") as f:
         json.dump(ans, f)
 
-    print("TEST  loss {loss:.6f}  F1 {f1:.6f}  EM {exact_match:.6f}".format(**metrics))
+    print("DEV   loss {loss:.6f}  F1 {f1:.6f}  EM {exact_match:.6f}".format(**metrics))
     return {"f1": metrics["f1"], "exact_match": metrics["exact_match"], "loss": metrics["loss"]}

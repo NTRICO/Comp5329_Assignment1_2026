@@ -52,9 +52,19 @@ def train_single_epoch(
 
 
 def save_checkpoint(
-    save_dir, ckpt_name, model, optimizer, scheduler, step, best_f1, best_em, config
+    save_dir,
+    ckpt_name,
+    model,
+    optimizer,
+    scheduler,
+    step,
+    best_f1,
+    best_em,
+    config,
+    dev_f1=None,
+    dev_em=None,
 ):
-    """Save model, optimizer, scheduler state to a checkpoint file."""
+    """Save the selected checkpoint state to a checkpoint file."""
     os.makedirs(save_dir, exist_ok=True)
     payload = {
         "model": model.state_dict(),
@@ -64,5 +74,10 @@ def save_checkpoint(
         "best_f1": best_f1,
         "best_em": best_em,
         "config": config,
+        "selection_metric": "dev_f1_then_dev_em",
     }
+    if dev_f1 is not None:
+        payload["dev_f1"] = dev_f1
+    if dev_em is not None:
+        payload["dev_em"] = dev_em
     torch.save(payload, os.path.join(save_dir, ckpt_name))
