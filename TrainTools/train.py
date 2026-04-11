@@ -167,10 +167,8 @@ def train(
     scheduler = schedulers[scheduler_name](optimizer, args)
     loss_fn = losses[loss_name]
 
-    best_f1 = 0.0
-    best_em = 0.0
-    best_ckpt_f1 = float("-inf")
-    best_ckpt_em = float("-inf")
+    best_f1 = float("-inf")
+    best_em = float("-inf")
     patience = 0
     history = []
     effective_dev_num_batches = (
@@ -242,9 +240,7 @@ def train(
 
         dev_f1 = dv_metrics["f1"]
         dev_em = dv_metrics["exact_match"]
-        is_best_ckpt = _is_better_checkpoint(
-            dev_f1, dev_em, best_ckpt_f1, best_ckpt_em
-        )
+        is_best_ckpt = _is_better_checkpoint(dev_f1, dev_em, best_f1, best_em)
 
         if is_best_ckpt:
             patience = 0
@@ -254,12 +250,9 @@ def train(
                 print("Early stopping triggered.")
                 break
 
-        best_f1 = max(best_f1, dev_f1)
-        best_em = max(best_em, dev_em)
-
         if is_best_ckpt:
-            best_ckpt_f1 = dev_f1
-            best_ckpt_em = dev_em
+            best_f1 = dev_f1
+            best_em = dev_em
             save_checkpoint(
                 save_dir,
                 ckpt_name,
@@ -281,12 +274,11 @@ def train(
         with open(os.path.join(log_dir, "answers.json"), "w") as f:
             json.dump(ans, f)
 
+    if best_f1 == float("-inf"):
+        best_f1 = 0.0
+        best_em = 0.0
+
     print(f"Training finished.  Best F1: {best_f1:.4f}  Best EM: {best_em:.4f}")
-    if best_ckpt_f1 > float("-inf"):
-        print(
-            f"Best checkpoint metrics.  Dev F1: {best_ckpt_f1:.4f}  "
-            f"Dev EM: {best_ckpt_em:.4f}"
-        )
 
     return {
         "best_f1": best_f1,
