@@ -66,6 +66,8 @@ def train(
     seed: int = 42,
     grad_clip: float = 5.0,
     early_stop: int = 10,
+    min_delta_f1: float = 0.05,
+    min_delta_em: float = 0.05,
     # ── DL technique selection (string registry keys) ─────────────────────────
     optimizer_name: str = "adam",
     scheduler_name: str = "lambda",
@@ -240,19 +242,14 @@ def train(
 
         dev_f1 = dv_metrics["f1"]
         dev_em = dv_metrics["exact_match"]
-        is_best_ckpt = _is_better_checkpoint(dev_f1, dev_em, best_f1, best_em)
 
-        if is_best_ckpt:
-            patience = 0
-        else:
-            patience += 1
-            if patience > early_stop:
-                print("Early stopping triggered.")
-                break
+        is_best_ckpt = _is_better_checkpoint(dev_f1, dev_em, best_f1, best_em)
 
         if is_best_ckpt:
             best_f1 = dev_f1
             best_em = dev_em
+            patience = 0
+
             save_checkpoint(
                 save_dir,
                 ckpt_name,
@@ -270,6 +267,17 @@ def train(
                 f"Saved best checkpoint to {os.path.join(save_dir, ckpt_name)} "
                 f"(dev F1={dev_f1:.4f}, dev EM={dev_em:.4f})"
             )
+        else:
+            f1_improved = dev_f1 > best_f1 + min_delta_f1
+            em_improved = dev_em > best_em + min_delta_em
+
+            if f1_improved or em_improved:
+                patience = 0
+            else:
+                patience += 1
+                if patience > early_stop:
+                    print("Early stopping triggered.")
+                    break
 
         with open(os.path.join(log_dir, "answers.json"), "w") as f:
             json.dump(ans, f)
