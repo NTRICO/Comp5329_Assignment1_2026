@@ -50,6 +50,26 @@ def exact_match_score(prediction, ground_truth):
 def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
     return max(metric_fn(prediction, gt) for gt in ground_truths)
 
+def get_best_span(p1, p2, max_len=15):
+    # Find a best model in checkpoints
+    batch_size, c_len = p1.size()
+    best_s = []
+    best_e = []
+
+    for b in range(batch_size):
+        scores = p1[b].unsqueeze(1) + p2[b].unsqueeze(0)  # [L, L]
+        scores = torch.triu(scores)
+        if max_len is not None:
+            scores = torch.tril(scores, diagonal=max_len - 1)
+
+        flat_idx = torch.argmax(scores)
+        s = flat_idx // c_len
+        e = flat_idx % c_len
+        best_s.append(int(s))
+        best_e.append(int(e))
+
+    return best_s, best_e
+
 
 def squad_evaluate(eval_file, answer_dict):
     f1 = exact_match = total = 0.0
@@ -104,13 +124,8 @@ def run_eval(model, dataset, eval_file, num_batches, batch_size,
         loss = loss_fn(p1, p2, y1, y2)
         losses.append(float(loss.item()))
 
-        yp1 = torch.argmax(p1, dim=1)
-        yp2 = torch.argmax(p2, dim=1)
-        yps = torch.stack([yp1, yp2], dim=1)
-        ymin, _ = torch.min(yps, dim=1)
-        ymax, _ = torch.max(yps, dim=1)
-
-        answer_dict_, _ = convert_tokens(eval_file, ids.tolist(), ymin.tolist(), ymax.tolist())
+        best_s, best_e = get_best_span(p1, p2, max_len=15)
+        answer_dict_, _ = convert_tokens(eval_file, ids.tolist(), best_s, best_e)
         answer_dict.update(answer_dict_)
 
     metrics = squad_evaluate(eval_file, answer_dict)
