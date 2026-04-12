@@ -14,28 +14,26 @@ class LayerNorm(nn.Module):
     y = (x - mean) / sqrt(var + eps) * weight + bias
     """
 
-    def __init__(
-        self,
-        normalized_shape: Union[int, List[int]],
-        eps: float = 1e-5,
-    ):
+    def __init__(self, normalized_shape, eps: float = 1e-5):
         super().__init__()
         if isinstance(normalized_shape, int):
             normalized_shape = [normalized_shape]
         self.normalized_shape = list(normalized_shape)
         self.eps = eps
 
-        # Learnable affine parameters (same shape as normalized_shape)
-        self.weight = nn.Parameter(torch.ones(self.normalized_shape))
-        self.bias = nn.Parameter(torch.zeros(self.normalized_shape))
+        if len(self.normalized_shape) != 1:
+            raise ValueError(
+                "LayerNorm expects a single channel dimension; "
+                f"got normalized_shape={self.normalized_shape}"
+            )
+
+        channels = self.normalized_shape[0]
+        self.weight = nn.Parameter(torch.ones(channels))
+        self.bias = nn.Parameter(torch.zeros(channels))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Determine which dims to reduce over (the last N dims)
-        n = len(self.normalized_shape)
-        dims = tuple(range(-n, 0))  # e.g. (-2, -1) for a 2-D normalized_shape
-
-        mean = x.mean(dim=dims, keepdim=True)
-        var = x.var(dim=dims, keepdim=True, unbiased=False)
-
+        # x: [B, C, L]
+        mean = x.mean(dim=1, keepdim=True)
+        var = x.var(dim=1, keepdim=True, unbiased=False)
         x_norm = (x - mean) / torch.sqrt(var + self.eps)
-        return x_norm * self.weight + self.bias
+        return x_norm * self.weight.view(1, -1, 1) + self.bias.view(1, -1, 1)
