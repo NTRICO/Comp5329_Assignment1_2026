@@ -35,6 +35,6 @@ def get_norm(name: str, d_model: int, length: int, num_groups: int = 8) -> nn.Mo
             f"Unknown normalization '{name}'. Available: {list(normalizations.keys())}"
         )
     if name == "layer_norm":
-        return LayerNorm([d_model, length])
+        return LayerNorm(d_model)
     else:  # group_norm
         return GroupNorm(num_groups, d_model)
